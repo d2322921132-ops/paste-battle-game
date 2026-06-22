@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>双人成行 - 浆糊大作战</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+        body{background:#0f0f23;overflow:hidden;font-family:'Microsoft YaHei',Arial,sans-serif;width:100vw;height:100vh}
+        canvas{display:block;width:100%;height:100%}
+        
+        /* 角色选择 */
+        #charSelect{position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#0f0f23,#1a1a3e,#0f3460);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:1000}
+        #charSelect h1{color:#e94560;font-size:32px;margin-bottom:10px;text-shadow:0 0 20px rgba(233,69,96,0.5)}
+        #charSelect p{color:#888;font-size:14px;margin-bottom:25px}
+        .char-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;padding:0 20px;max-width:350px;width:100%}
+        .char-card{background:rgba(255,255,255,0.08);border-radius:20px;padding:20px 15px;text-align:center;cursor:pointer;border:3px solid transparent;transition:all 0.3s}
+        .char-card.sel{border-color:#e94560;background:rgba(233,69,96,0.15);transform:scale(1.05)}
+        .char-card .av{width:70px;height:70px;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:36px}
+        .char-card.anime .av{background:linear-gradient(135deg,#ff6b6b,#feca57)}
+        .char-card.abstract .av{background:linear-gradient(135deg,#48dbfb,#0abde3)}
+        .char-card h3{color:#fff;font-size:16px;margin-bottom:3px}
+        .char-card p{color:#999;font-size:12px}
+        
+        /* 联机大厅 */
+        #lobby{position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#0f0f23,#1a1a3e,#0f3460);display:none;flex-direction:column;justify-content:center;align-items:center;z-index:999}
+        #lobby h2{color:#e94560;font-size:26px;margin-bottom:5px}
+        #lobby .sub{color:#888;font-size:13px;margin-bottom:20px}
+        .lobby-btns{display:flex;flex-direction:column;gap:12px;width:80%;max-width:280px}
+        .lbtn{padding:14px;border:none;border-radius:15px;font-size:17px;cursor:pointer;font-weight:bold}
+        .lbtn.primary{background:linear-gradient(135deg,#e94560,#c13651);color:#fff;box-shadow:0 4px 15px rgba(233,69,96,0.4)}
+        .lbtn.secondary{background:rgba(255,255,255,0.15);color:#fff}
+        #codeInput{padding:14px;border-radius:12px;border:2px solid #e94560;background:rgba(0,0,0,0.4);color:#fff;font-size:22px;text-align:center;width:100%;text-transform:uppercase;letter-spacing:4px;outline:none}
+        #connStatus{color:#888;font-size:12px;margin-top:10px;min-height:18px}
+        
+        /* 等待大厅 */
+        #waitingRoom{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#0f0f23,#1a1a3e,#0f3460);flex-direction:column;justify-content:center;align-items:center;z-index:998}
+        #waitingRoom h2{color:#e94560;font-size:28px;margin-bottom:10px}
+        .wait-players{display:flex;gap:40px;margin-bottom:25px;align-items:center}
+        .wait-player{text-align:center}
+        .wait-avatar{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 10px;transition:all 0.5s}
+        .wait-avatar.anime{background:linear-gradient(135deg,#ff6b6b,#feca57)}
+        .wait-avatar.abstract{background:linear-gradient(135deg,#48dbfb,#0abde3)}
+        .wait-avatar.empty{background:rgba(255,255,255,0.1);opacity:0.4}
+        .wait-name{color:#fff;font-size:14px}
+        .wait-name.empty{color:#888;opacity:0.4}
+        .vs-text{color:#888;font-size:24px;font-weight:bold}
+        
+        /* 邀请码区域 */
+        .code-box{background:rgba(0,0,0,0.3);padding:20px 40px;border-radius:15px;margin-bottom:20px;text-align:center}
+        .code-label{color:#888;font-size:12px;margin-bottom:8px}
+        .code-value{color:#e94560;font-size:36px;font-weight:bold;letter-spacing:10px;font-family:monospace}
+        .copy-btn{margin-top:12px;padding:8px 25px;border:none;border-radius:20px;background:rgba(255,255,255,0.15);color:#fff;font-size:14px;cursor:pointer;transition:all 0.3s}
+        .copy-btn:active{background:rgba(233,69,96,0.5);transform:scale(0.95)}
+        .copy-btn.copied{background:#48dbfb;color:#000}
+        
+        #waitHint{color:#888;font-size:14px;margin-bottom:20px}
+        #startBtn{display:none;padding:15px 50px;font-size:20px}
+        
+        /* 游戏UI */
+        #gameUI{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;display:none}
+        #statusAlert{position:absolute;top:15px;left:50%;transform:translateX(-50%);background:rgba(233,69,96,0.9);color:#fff;padding:8px 25px;border-radius:25px;font-size:16px;font-weight:bold;display:none;animation:pulse 1s infinite}
+        @keyframes pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.08)}}
+        #energyWrap{position:absolute;top:50px;left:50%;transform:translateX(-50%);width:180px;height:16px;background:rgba(0,0,0,0.5);border-radius:10px;overflow:hidden;border:2px solid rgba(233,69,96,0.6)}
+        #energyFill{width:100%;height:100%;background:linear-gradient(90deg,#e94560,#ff6b6b);transition:width 0.3s}
+        #scoreText{position:absolute;top:75px;left:50%;transform:translateX(-50%);color:#fff;font-size:18px;font-weight:bold;text-shadow:0 2px 4px rgba(0,0,0,0.5)}
+        
+        /* 虚拟摇杆 */
+        .joy{position:absolute;bottom:60px;width:110px;height:110px;pointer-events:all}
+        #joyL{left:25px}
+        #joyR{right:25px}
+        .joy-base{width:100%;height:100%;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);position:relative}
+        .joy-thumb{width:45px;height:45px;border-radius:50%;background:#e94560;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 2px 10px rgba(233,69,96,0.5)}
+        
+        /* 救援按钮 */
+        #rescueBtn{position:absolute;padding:8px 20px;border:none;border-radius:20px;background:linear-gradient(135deg,#00d9ff,#0099cc);color:#fff;font-size:14px;font-weight:bold;cursor:pointer;display:none;pointer-events:all;animation:bob 1s infinite}
+        @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+        
+        /* 提示弹窗 */
+        #toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.85);color:#fff;padding:15px 30px;border-radius:10px;font-size:16px;z-index:2000;display:none}
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    
+    <!-- 角色选择 -->
+    <div id="charSelect">
+        <h1>选择你的角色</h1>
+        <p>选择后进入联机大厅</p>
+        <div class="char-grid">
+            <div class="char-card anime" onclick="selectChar('anime')">
+                <div class="av">🎨</div>
+                <h3>动漫风</h3>
+                <p>可爱萌系造型</p>
+            </div>
+            <div class="char-card abstract" onclick="selectChar('abstract')">
+                <div class="av">🔷</div>
+                <h3>抽象风</h3>
+                <p>几何艺术造型</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 联机大厅 -->
+    <div id="lobby">
+        <h2>浆糊大作战</h2>
+        <p class="sub">双人联机 · 躲避浆糊 · 互相救援</p>
+        <div class="lobby-btns">
+            <button class="lbtn primary" onclick="createRoom()">创建房间</button>
+            <input type="text" id="codeInput" placeholder="输入6位邀请码" maxlength="6">
+            <button class="lbtn secondary" onclick="joinRoom()">加入房间</button>
+        </div>
+        <p id="connStatus"></p>
+    </div>
+    
+    <!-- 等待大厅 -->
+    <div id="waitingRoom">
+        <h2>等待大厅</h2>
+        <p id="waitHint">等待玩家加入...</p>
+        
+        <div class="wait-players">
+            <div class="wait-player">
+                <div id="myAvatar" class="wait-avatar empty">❓</div>
+                <p id="myName" class="wait-name empty">等待...</p>
+            </div>
+            <div class="vs-text">VS</div>
+            <div class="wait-player">
+                <div id="oppAvatar" class="wait-avatar empty">❓</div>
+                <p id="oppName" class="wait-name empty">等待...</p>
+            </div>
+        </div>
+        
+        <div class="code-box" id="codeBox">
+            <p class="code-label">房间邀请码</p>
+            <p class="code-value" id="waitCode">------</p>
+            <button class="copy-btn" id="copyBtn" onclick="copyCode()">📋 复制邀请码</button>
+        </div>
+        
+        <button id="startBtn" class="lbtn primary" onclick="startGameFromWaiting()">开始游戏</button>
+    </div>
+    
+    <!-- 游戏UI -->
+    <div id="gameUI">
+        <div id="statusAlert"></div>
+        <div id="energyWrap"><div id="energyFill"></div></div>
+        <div id="scoreText">得分: 0</div>
+        <div class="joy" id="joyL"><div class="joy-base"><div class="joy-thumb"></div></div></div>
+        <div class="joy" id="joyR"><div class="joy-base"><div class="joy-thumb"></div></div></div>
+        <button id="rescueBtn" onclick="rescue()">🧹 清理浆糊</button>
+    </div>
+    
+    <div id="toast"></div>
+
+    <script>
+    // ===================== 全局状态 =====================
+    const C = document.getElementById('c');
+    const X = C.getContext('2d');
+    let W, H;
+    
+    function resize() { W = C.width = innerWidth; H = C.height = innerHeight; }
+    resize();
+    addEventListener('resize', resize);
+    
+    // 角色 & 房间
+    let myChar = null;
+    let myId = null;
+    let peer = null;
+    let conn = null;
+    let isHost = false;
+    let gameRunning = false;
+    let score = 0;
+    let energy = 100;
+    let roomCode = null;
+    let opponentJoined = false;
+    
+    // 玩家
+    const me = { x:0, y:0, trapped:false, char:null, name:'我' };
+    const opp = { x:0, y:0, trapped:false, char:null, name:'对手' };
+    
+    // 浆糊
+    const pastes = [];
+    let pasteTimer = 0;
+    
+    // 输入
+    const keys = {};
+    let joyL = { x:0, y:0, on:false };
+    let joyR = { x:0, y:0, on:false };
+    
+    // 后台保活
+    let bgInterval = null;
+    
+    // ===================== 提示 =====================
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', 2000);
+    }
+    
+    // ===================== 角色选择 =====================
+    function selectChar(type) {
+        myChar = type;
+        me.char = type;
+        document.querySelectorAll('.char-card').forEach(c => c.classList.remove('sel'));
+        document.querySelector(`.char-card.${type}`).classList.add('sel');
+        setTimeout(() => {
+            document.getElementById('charSelect').style.display = 'none';
+            document.getElementById('lobby').style.display = 'flex';
+        }, 400);
+    }
+    
+    // ===================== 复制邀请码 =====================
+    function copyCode() {
+        const code = document.getElementById('waitCode').textContent;
+        if (!code || code === '------') return;
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = document.getElementById('copyBtn');
+                btn.textContent = '✅ 已复制';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '📋 复制邀请码';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(() => fallbackCopy(code));
+        } else {
+            fallbackCopy(code);
+        }
+    }
+    
+    function fallbackCopy(code) {
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            const btn = document.getElementById('copyBtn');
+            btn.textContent = '✅ 已复制';
+            setTimeout(() => btn.textContent = '📋 复制邀请码', 2000);
+        } catch(e) {}
+        document.body.removeChild(ta);
+    }
+    
+    // ===================== 等待大厅 =====================
+    function showWaitingRoom() {
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('waitingRoom').style.display = 'flex';
+        
+        // 显示我的角色
+        const myAvatar = document.getElementById('myAvatar');
+        myAvatar.innerHTML = myChar === 'anime' ? '🎨' : '🔷';
+        myAvatar.className = 'wait-avatar ' + myChar;
+        document.getElementById('myName').textContent = '我 (' + (myChar === 'anime' ? '动漫风' : '抽象风') + ')';
+        document.getElementById('myName').className = 'wait-name';
+        
+        // 显示邀请码（房主和加入者都能看到）
+        document.getElementById('waitCode').textContent = roomCode || '------';
+        
+        if (isHost) {
+            document.getElementById('waitHint').textContent = '等待朋友加入...';
+            document.getElementById('startBtn').style.display = 'none';
+        } else {
+            document.getElementById('waitHint').textContent = '等待房主开始...';
+            document.getElementById('startBtn').style.display = 'none';
+        }
+        
+        // 如果对手已加入，更新显示
+        if (opponentJoined) updateOpponentInfo();
+    }
+    
+    function updateOpponentInfo() {
+        opponentJoined = true;
+        const oppAvatar = document.getElementById('oppAvatar');
+        oppAvatar.innerHTML = opp.char === 'anime' ? '🎨' : '🔷';
+        oppAvatar.className = 'wait-avatar ' + opp.char;
+        document.getElementById('oppName').textContent = '对手 (' + (opp.char === 'anime' ? '动漫风' : '抽象风') + ')';
+        document.getElementById('oppName').className = 'wait-name';
+        
+        if (isHost) {
+            document.getElementById('startBtn').style.display = 'block';
+            document.getElementById('waitHint').textContent = '对方已加入！点击开始游戏';
+        } else {
+            document.getElementById('waitHint').textContent = '房主即将开始游戏...';
+        }
+    }
+    
+    function startGameFromWaiting() {
+        if (!conn || !conn.open) {
+            showToast('对方未连接，无法开始');
+            return;
+        }
+        send({ type:'readyToStart' });
+        document.getElementById('waitingRoom').style.display = 'none';
+        startGame();
+    }
+    
+    // ===================== PeerJS 联机 =====================
+    function initPeer(id) {
+        return new Promise((resolve, reject) => {
+            const config = {
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' }
+                    ]
+                }
+            };
+            
+            peer = id ? new Peer(id, config) : new Peer(config);
+            
+            peer.on('open', (pid) => {
+                console.log('Peer open:', pid);
+                resolve(pid);
+            });
+            peer.on('error', (e) => {
+                console.error('Peer error:', e);
+                reject(e);
+            });
+            
+            // 30秒超时
+            setTimeout(() => {
+                if (!peer.destroyed && !peer.open) {
+                    reject(new Error('连接信令服务器超时'));
+                }
+            }, 30000);
+        });
+    }
+    
+    function genCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+        return code;
+    }
+    
+    async function createRoom() {
+        roomCode = genCode();
+        isHost = true;
+        
+        // 先直接进入等待大厅，显示房间号
+        showWaitingRoom();
+        document.getElementById('waitHint').textContent = '正在连接服务器，请稍候...';
+        
+        // 后台连接 PeerJS
+        try {
+            const peerId = 'paste-battle-' + roomCode;
+            await initPeer(peerId);
+            myId = peer.id;
+            
+            document.getElementById('waitHint').textContent = '房间已就绪，等待朋友加入...';
+            
+            // 监听连接
+            peer.on('connection', (connection) => {
+                console.log('有人连接了！');
+                if (conn && conn.open) {
+                    connection.close();
+                    return;
+                }
+                conn = connection;
+                setupConnection();
+            });
+            
+            // 启动后台保活
+            startBackgroundKeepAlive();
+            
+        } catch(e) {
+            console.error(e);
+            document.getElementById('waitHint').textContent = '连接失败，正在重试...';
+            document.getElementById('waitHint').style.color = '#e94560';
+            
+            // 自动重试
+            setTimeout(() => {
+                if (!peer || peer.destroyed) {
+                    createRoomRetry();
+                }
+            }, 3000);
+        }
+    }
+    
+    async function createRoomRetry() {
+        try {
+            const peerId = 'paste-battle-' + roomCode;
+            await initPeer(peerId);
+            myId = peer.id;
+            
+            document.getElementById('waitHint').textContent = '房间已就绪，等待朋友加入...';
+            document.getElementById('waitHint').style.color = '#888';
+            
+            peer.on('connection', (connection) => {
+                if (conn && conn.open) { connection.close(); return; }
+                conn = connection;
+                setupConnection();
+            });
+            
+            startBackgroundKeepAlive();
+        } catch(e2) {
+            document.getElementById('waitHint').textContent = '连接失败，请刷新页面重试';
+            document.getElementById('waitHint').style.color = '#e94560';
+        }
+    }
+    
+    async function joinRoom() {
+        const code = document.getElementById('codeInput').value.toUpperCase().trim();
+        if (code.length !== 6) { showToast('请输入6位邀请码'); return; }
+        
+        const status = document.getElementById('connStatus');
+        status.textContent = '正在连接...';
+        status.style.color = '#feca57';
+        
+        try {
+            await initPeer();
+            myId = peer.id;
+            isHost = false;
+            roomCode = code;
+            
+            const hostId = 'paste-battle-' + code;
+            
+            conn = peer.connect(hostId, { reliable: true, serialization: 'json' });
+            
+            conn.on('open', () => {
+                console.log('连接成功！');
+                setupConnection();
+                showWaitingRoom();
+                status.textContent = '';
+                startBackgroundKeepAlive();
+            });
+            
+            conn.on('error', (e) => {
+                console.error('连接错误:', e);
+                status.textContent = '连接失败，请检查邀请码';
+                status.style.color = '#e94560';
+            });
+            
+            // 超时处理
+            setTimeout(() => {
+                if (!conn || !conn.open) {
+                    status.textContent = '连接超时，房间可能不存在';
+                    status.style.color = '#e94560';
+                }
+            }, 15000);
+            
+        } catch(e) {
+            console.error(e);
+            status.textContent = '连接失败: ' + e.message;
+            status.style.color = '#e94560';
+        }
+    }
+    
+    function setupConnection() {
+        conn.on('open', () => {
+            console.log('DataChannel 打开');
+            send({ type:'hello', char: myChar });
+        });
+        
+        conn.on('data', (data) => {
+            console.log('收到数据:', data);
+            handleMessage(data);
+        });
+        
+        conn.on('close', () => {
+            showToast('对方断开连接');
+            setTimeout(() => location.reload(), 2000);
+        });
+        
+        conn.on('error', (e) => {
+            console.error('连接错误:', e);
+        });
+    }
+    
+    function send(data) {
+        if (conn && conn.open) {
+            try {
+                conn.send(data);
+            } catch(e) {
+                console.error('发送失败:', e);
+            }
+        }
+    }
+    
+    function handleMessage(data) {
+        if (!data || !data.type) return;
+        switch(data.type) {
+            case 'hello':
+                opp.char = data.char;
+                updateOpponentInfo();
+                send({ type:'helloBack', char: myChar });
+                break;
+            case 'helloBack':
+                opp.char = data.char;
+                updateOpponentInfo();
+                break;
+            case 'readyToStart':
+                document.getElementById('waitingRoom').style.display = 'none';
+                startGame();
+                break;
+            case 'pos':
+                opp.x = data.x;
+                opp.y = data.y;
+                opp.trapped = data.trapped;
+                break;
+            case 'trapped':
+                opp.trapped = true;
+                break;
+            case 'rescued':
+                opp.trapped = false;
+                break;
+            case 'crystal':
+                energy = Math.min(100, energy + 20);
+                break;
+            case 'ping':
+                send({ type:'pong' });
+                break;
+            case 'pong':
+                // 保活响应
+                break;
+        }
+    }
+    
+    // ===================== 后台保活 =====================
+    function startBackgroundKeepAlive() {
+        // 使用 Page Visibility API
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // 页面隐藏时，启动定时保活
+                bgInterval = setInterval(() => {
+                    if (conn && conn.open) {
+                        send({ type:'ping' });
+                    }
+                }, 2000);
+            } else {
+                // 页面显示时，停止定时保活
+                if (bgInterval) {
+                    clearInterval(bgInterval);
+                    bgInterval = null;
+                }
+            }
+        });
+        
+        // 也定期发送心跳（无论是否隐藏）
+        setInterval(() => {
+            if (conn && conn.open) {
+                send({ type:'ping' });
+            }
+        }, 5000);
+    }
+    
+    // ===================== 开始游戏 =====================
+    function startGame() {
+        document.getElementById('waitingRoom').style.display = 'none';
+        document.getElementById('gameUI').style.display = 'block';
+        gameRunning = true;
+        
+        me.x = isHost ? W * 0.3 : W * 0.7;
+        me.y = H / 2;
+        opp.x = isHost ? W * 0.7 : W * 0.3;
+        opp.y = H / 2;
+        
+        loop();
+    }
+    
+    // ===================== 输入 =====================
+    addEventListener('keydown', e => keys[e.key] = true);
+    addEventListener('keyup', e => keys[e.key] = false);
+    
+    function setupJoy(el, jd) {
+        const base = el.querySelector('.joy-base');
+        const thumb = el.querySelector('.joy-thumb');
+        let sx, sy;
+        
+        const start = e => { e.preventDefault(); const t = e.touches?e.touches[0]:e; const r = base.getBoundingClientRect(); sx = r.left+r.width/2; sy = r.top+r.height/2; jd.on = true; };
+        const move = e => { if(!jd.on) return; e.preventDefault(); const t = e.touches?e.touches[0]:e; let dx = t.clientX-sx, dy = t.clientY-sy; const d = Math.sqrt(dx*dx+dy*dy); const mx = 30; if(d>mx){dx*=mx/d;dy*=mx/d;} jd.x=dx; jd.y=dy; thumb.style.transform=`translate(calc(-50% + ${jd.x}px),calc(-50% + ${jd.y}px))`; };
+        const end = () => { jd.on=false; jd.x=0; jd.y=0; thumb.style.transform='translate(-50%,-50%)'; };
+        
+        el.addEventListener('touchstart', start, {passive:false});
+        el.addEventListener('touchmove', move, {passive:false});
+        el.addEventListener('touchend', end);
+        el.addEventListener('touchcancel', end);
+    }
+    setupJoy(document.getElementById('joyL'), joyL);
+    setupJoy(document.getElementById('joyR'), joyR);
+    
+    // ===================== 浆糊系统 =====================
+    function spawnPaste() {
+        pastes.push({
+            x: Math.random() * W,
+            y: -40,
+            r: 18 + Math.random() * 15,
+            spd: 2 + Math.random() * 2.5,
+            rot: Math.random() * 6.28
+        });
+    }
+    
+    function updatePastes() {
+        pasteTimer++;
+        if (pasteTimer > 90 + Math.random() * 60) { spawnPaste(); pasteTimer = 0; }
+        
+        for (let i = pastes.length - 1; i >= 0; i--) {
+            const p = pastes[i];
+            p.y += p.spd;
+            p.rot += 0.03;
+            
+            if (!me.trapped) {
+                const dx = me.x - p.x, dy = me.y - p.y;
+                if (Math.sqrt(dx*dx+dy*dy) < 28 + p.r) {
+                    me.trapped = true;
+                    pastes.splice(i, 1);
+                    showStatus('你被困住了！等待救援！');
+                    send({ type:'trapped' });
+                    continue;
+                }
+            }
+            
+            if (p.y > H + 50) pastes.splice(i, 1);
+        }
+    }
+    
+    function showStatus(t) {
+        const el = document.getElementById('statusAlert');
+        el.textContent = t;
+        el.style.display = 'block';
+    }
+    
+    function hideStatus() {
+        document.getElementById('statusAlert').style.display = 'none';
+    }
+    
+    // ===================== 救援 =====================
+    function rescue() {
+        if (!opp.trapped) return;
+        const dx = me.x - opp.x, dy = me.y - opp.y;
+        if (Math.sqrt(dx*dx+dy*dy) < 80) {
+            send({ type:'rescued' });
+            score += 50;
+            document.getElementById('scoreText').textContent = '得分: ' + score;
+        }
+    }
+    
+    function updateRescueBtn() {
+        const btn = document.getElementById('rescueBtn');
+        if (opp.trapped) {
+            const dx = me.x - opp.x, dy = me.y - opp.y;
+            if (Math.sqrt(dx*dx+dy*dy) < 100) {
+                btn.style.display = 'block';
+                btn.style.left = (opp.x - 40) + 'px';
+                btn.style.top = (opp.y - 55) + 'px';
+            } else { btn.style.display = 'none'; }
+        } else { btn.style.display = 'none'; }
+    }
+    
+    // ===================== 更新 =====================
+    function update() {
+        if (!gameRunning) return;
+        
+        if (!me.trapped) {
+            let dx = 0, dy = 0;
+            if (keys.ArrowLeft || keys.a) dx--;
+            if (keys.ArrowRight || keys.d) dx++;
+            if (keys.ArrowUp || keys.w) dy--;
+            if (keys.ArrowDown || keys.s) dy++;
+            if (joyL.on) { dx = joyL.x / 30; dy = joyL.y / 30; }
+            const d = Math.sqrt(dx*dx+dy*dy);
+            if (d > 0) { me.x += (dx/d)*4.5; me.y += (dy/d)*4.5; }
+        }
+        
+        me.x = Math.max(28, Math.min(W-28, me.x));
+        me.y = Math.max(28, Math.min(H-28, me.y));
+        
+        updatePastes();
+        updateRescueBtn();
+        
+        send({ type:'pos', x:me.x, y:me.y, trapped:me.trapped });
+        
+        if (me.trapped) {
+            energy -= 0.3;
+            if (energy <= 0) { energy = 0; showToast('能量耗尽！游戏结束'); setTimeout(()=>location.reload(), 2000); }
+        }
+        document.getElementById('energyFill').style.width = energy + '%';
+    }
+    
+    // ===================== 绘制 =====================
+    function draw() {
+        X.clearRect(0, 0, W, H);
+        
+        X.fillStyle = '#0f0f23';
+        X.fillRect(0, 0, W, H);
+        
+        X.strokeStyle = 'rgba(255,255,255,0.03)';
+        X.lineWidth = 1;
+        for (let i = 0; i < W; i += 40) { X.beginPath(); X.moveTo(i,0); X.lineTo(i,H); X.stroke(); }
+        for (let i = 0; i < H; i += 40) { X.beginPath(); X.moveTo(0,i); X.lineTo(W,i); X.stroke(); }
+        
+        pastes.forEach(p => {
+            X.save();
+            X.translate(p.x, p.y);
+            X.rotate(p.rot);
+            X.fillStyle = '#ffeb3b';
+            X.shadowBlur = 15;
+            X.shadowColor = '#ffeb3b';
+            X.beginPath();
+            X.arc(0, 0, p.r, 0, Math.PI*2);
+            X.fill();
+            X.shadowBlur = 0;
+            X.fillStyle = '#ff9500';
+            X.beginPath();
+            X.arc(-3, -3, p.r*0.35, 0, Math.PI*2);
+            X.fill();
+            X.fillStyle = 'rgba(255,235,59,0.6)';
+            for (let i = 0; i < 4; i++) {
+                const a = i * 1.57;
+                X.beginPath();
+                X.arc(Math.cos(a)*p.r*0.7, Math.sin(a)*p.r*0.7, 5, 0, Math.PI*2);
+                X.fill();
+            }
+            X.restore();
+        });
+        
+        drawPlayer(me, true);
+        drawPlayer(opp, false);
+    }
+    
+    function drawPlayer(p, isMe) {
+        X.save();
+        X.translate(p.x, p.y);
+        
+        if (p.trapped) {
+            X.fillStyle = 'rgba(255,235,59,0.4)';
+            X.beginPath();
+            X.arc(0, 0, 38, 0, Math.PI*2);
+            X.fill();
+            
+            const t = Date.now() / 800;
+            X.fillStyle = '#ffeb3b';
+            for (let i = 0; i < 6; i++) {
+                const a = t + i * 1.05;
+                X.beginPath();
+                X.arc(Math.cos(a)*25, Math.sin(a)*25, 7, 0, Math.PI*2);
+                X.fill();
+            }
+            
+            X.fillStyle = 'rgba(255,0,0,0.8)';
+            X.font = 'bold 10px Arial';
+            X.textAlign = 'center';
+            X.fillText('HELP!', 0, 48);
+        }
+        
+        if (p.char === 'anime') {
+            const col = isMe ? '#ff6b6b' : '#4ecdc4';
+            X.fillStyle = col;
+            X.shadowBlur = 15;
+            X.shadowColor = col;
+            X.beginPath();
+            X.arc(0, 0, 26, 0, Math.PI*2);
+            X.fill();
+            X.shadowBlur = 0;
+            
+            X.fillStyle = '#fff';
+            X.beginPath(); X.arc(-9, -4, 7, 0, Math.PI*2); X.fill();
+            X.beginPath(); X.arc(9, -4, 7, 0, Math.PI*2); X.fill();
+            X.fillStyle = '#222';
+            X.beginPath(); X.arc(-9, -4, 3.5, 0, Math.PI*2); X.fill();
+            X.beginPath(); X.arc(9, -4, 3.5, 0, Math.PI*2); X.fill();
+            
+            X.strokeStyle = '#222';
+            X.lineWidth = 2;
+            X.beginPath();
+            if (p.trapped) { X.arc(0, 8, 5, Math.PI, 0); }
+            else { X.arc(0, 5, 7, 0, Math.PI); }
+            X.stroke();
+            
+            X.fillStyle = 'rgba(255,150,150,0.4)';
+            X.beginPath(); X.arc(-16, 5, 5, 0, Math.PI*2); X.fill();
+            X.beginPath(); X.arc(16, 5, 5, 0, Math.PI*2); X.fill();
+        } else {
+            const col = isMe ? '#48dbfb' : '#feca57';
+            X.fillStyle = col;
+            X.shadowBlur = 15;
+            X.shadowColor = col;
+            X.beginPath();
+            X.moveTo(0, -28);
+            X.lineTo(22, 0);
+            X.lineTo(0, 28);
+            X.lineTo(-22, 0);
+            X.closePath();
+            X.fill();
+            X.shadowBlur = 0;
+            
+            X.fillStyle = 'rgba(255,255,255,0.25)';
+            X.beginPath();
+            X.moveTo(0, -14);
+            X.lineTo(11, 0);
+            X.lineTo(0, 14);
+            X.lineTo(-11, 0);
+            X.closePath();
+            X.fill();
+            
+            X.fillStyle = '#fff';
+            X.beginPath();
+            X.arc(0, 0, 4, 0, Math.PI*2);
+            X.fill();
+        }
+        
+        X.fillStyle = '#fff';
+        X.font = 'bold 11px Arial';
+        X.textAlign = 'center';
+        X.shadowBlur = 3;
+        X.shadowColor = '#000';
+        X.fillText(isMe ? '我' : '对手', 0, -35);
+        X.shadowBlur = 0;
+        
+        X.restore();
+    }
+    
+    // ===================== 游戏循环 =====================
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+    
+    // 启动渲染
+    loop();
+    </script>
+</body>
+</html>
